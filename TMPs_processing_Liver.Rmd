@@ -1,0 +1,467 @@
+---
+title: "Pre-process"
+author: "Elena Eyre, PhD"
+date: '2022-11-29'
+output:
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+linkcolor: steelblue2
+fontsize: 8 pt
+---
+
+# 1. Load libraries of functions and data: 
+
+I uploaded data and packages of necessary functions to perform the calculations.
+
+```{r, setup, results=FALSE, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE)
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("DESeq2")
+package_to_load <- c("readxl", "dplyr", "ggplot2", "tidyr", "broom", "gplots", "tidyverse")
+for (package in package_to_load) {
+  require(package, character.only = T); packageVersion(package)
+}
+extra_to_load <- c("knitr","kableExtra", "stringr", "stringi", "ggrepel","ggpubr", "ggbreak","RColorBrewer","corrplot","edgeR","purrr","pheatmap")
+for (package in extra_to_load) {
+  require(package, character.only = T); packageVersion(package)
+}
+```
+
+# 2. Load data and extract values to a new table
+
+Load all the Liver sample tables obtained from the pseudo-mapping with salmon:
+```{r}
+LV_HFD_2WK_F_2_S8_salmon <- read_table("salmon_quants/LV_HFD__2WK_F_2_S8_quant/quant.sf")
+LV_HFD_2WK_F_5_S9_salmon <- read_table("salmon_quants/LV_HFD__2WK_F_5_S9_quant/quant.sf")
+LV_HFD_12WK_F_6_S2_salmon <- read_table("salmon_quants/LV_HFD__12WK_F6_S2_quant/quant.sf")
+LV_HFD_12WK_M_2_S13_salmon <- read_table("salmon_quants/LV_HFD__12WK_M_2_S13_quant/quant.sf")
+LV_HFD_12WK_M_3_S14_salmon<- read_table("salmon_quants/LV_HFD__12WK_M_3_S14_quant/quant.sf")
+LV_HFD_12WK_M_4_S15_salmon<- read_table("salmon_quants/LV_HFD__12WK_M_4_S15_quant/quant.sf")
+LV_HFD_2WK_F_1_S7_salmon<- read_table("salmon_quants/LV_HFD_2WK_F_1_S7_quant/quant.sf")
+LV_HFD_2WK_M_12_S3_salmon<- read_table("salmon_quants/LV_HFD_2WK_M_12_S3_quant/quant.sf")
+LV_HFD_2WK_M_13_S4_salmon<- read_table("salmon_quants/LV_HFD_2WK_M_13_S4_quant/quant.sf")
+LV_HFD_2WK_M_14_S5_salmon<- read_table("salmon_quants/LV_HFD_2WK_M_14_S5_quant/quant.sf")
+LV_HFD_12WK_F_3_S1_salmon<- read_table("salmon_quants/LV_HFD_12WK_F_3_S1_quant/quant.sf")
+LV_HFD_12WK_F_7_S3_salmon<- read_table("salmon_quants/LV_HFD_12WK_F_7_S3_quant/quant.sf")
+LV_RD_2WK_F_1_S10_salmon<- read_table("salmon_quants/LV_RD_2WK_F_1_S10_quant/quant.sf")
+LV_RD_2WK_F_2_S11_salmon<- read_table("salmon_quants/LV_RD_2WK_F_2_S11_quant/quant.sf")
+LV_RD_2WK_F_4_S12_salmon<- read_table("salmon_quants/LV_RD_2WK_F_4_S12_quant/quant.sf")
+LV_RD_2WK_M_6_S6_salmon<- read_table("salmon_quants/LV_RD_2WK_M_6_S6_quant/quant.sf")
+LV_RD_2WK_M_7_S7_salmon<- read_table("salmon_quants/LV_RD_2WK_M_7_S7_quant/quant.sf")
+LV_RD_2WK_M_8_S8_salmon<- read_table("salmon_quants/LV_RD_2WK_M_8_S8_quant/quant.sf")
+LV_RD_12WK_F_7_S5_salmon<- read_table("salmon_quants/LV_RD_12WK_F_7_S5_quant 2/quant.sf")
+LV_RD_12WK_F_8_S6_salmon<- read_table("salmon_quants/LV_RD_12WK_F_8_S6_quant 2/quant.sf")
+LV_RD_12WK_F5_S4_salmon<- read_table("salmon_quants/LV_RD_12WK_F5_S4_quant 2/quant.sf")
+LV_RD_12WK_M_2_S16_salmon<- read_table("salmon_quants/LV_RD_12WK_M_2_S16_quant/quant.sf")
+LV_RD_12WK_M_3_S1_salmon<- read_table("salmon_quants/LV_RD_12WK_M_3_S1_quant/quant.sf")
+LV_RD_12WK_M_4_S2_salmon<- read_table("salmon_quants/LV_RD_12WK_M_4_S2_quant/quant.sf")
+```
+
+Load the data information (metadata):
+```{r}
+Samples_code_HFD_MF_2_12wk <- read_excel("Samples_code_HFD_MF_2_12wk.xlsx")
+```
+
+# 3. Prepare working tables
+
+Salmon's output consisted in several variables (https://salmon.readthedocs.io/en/latest/file_formats.html):
+
++ Name — This is the name of the target transcript provided in the input transcript database (FASTA file).
+
++ Length — This is the length of the target transcript in nucleotides.
+
++ EffectiveLength — This is the computed effective length of the target transcript. It takes into account all factors being modeled that will effect the probability of sampling fragments from this transcript, including the fragment length distribution and sequence-specific and gc-fragment bias (if they are being modeled).
+
++ TPM — This is salmon’s estimate of the relative abundance of this transcript in units of Transcripts Per Million (TPM). TPM is the recommended relative abundance measure to use for downstream analysis.
+
++ NumReads — This is salmon’s estimate of the number of reads mapping to each transcript that was quantified. It is an “estimate” insofar as it is the expected number of reads that have originated from each transcript given the structure of the uniquely mapping and multi-mapping reads and the relative abundance estimates for each transcript.
+
+I agreed with Vicent to work by now with TPMs. Thus, I collect the columns of gene names and TPMs to generate a working table:
+
+```{r}
+h2f2s8 <- LV_HFD_2WK_F_2_S8_salmon[,c(1,4)]
+h2f5s9 <- LV_HFD_2WK_F_5_S9_salmon[,c(1,4)]
+h12f6s2 <- LV_HFD_12WK_F_6_S2_salmon[,c(1,4)]
+h12m2s13 <- LV_HFD_12WK_M_2_S13_salmon[,c(1,4)]
+h12m3s14 <- LV_HFD_12WK_M_3_S14_salmon[,c(1,4)]
+h12m4s15 <- LV_HFD_12WK_M_4_S15_salmon[,c(1,4)]
+h2f1s7 <- LV_HFD_2WK_F_1_S7_salmon[,c(1,4)]
+h2m12s3 <- LV_HFD_2WK_M_12_S3_salmon[,c(1,4)]
+h2m13s4 <- LV_HFD_2WK_M_13_S4_salmon[,c(1,4)]
+h2m14s5 <- LV_HFD_2WK_M_14_S5_salmon[,c(1,4)]
+h12f3s1 <- LV_HFD_12WK_F_3_S1_salmon[,c(1,4)]
+h12f7s3 <- LV_HFD_12WK_F_7_S3_salmon[,c(1,4)]
+rd2f1s10 <- LV_RD_2WK_F_1_S10_salmon[,c(1,4)]
+rd2f2s11 <- LV_RD_2WK_F_2_S11_salmon[,c(1,4)]
+rd2f4s12 <- LV_RD_2WK_F_4_S12_salmon[,c(1,4)]
+rd2m6s6 <- LV_RD_2WK_M_6_S6_salmon[,c(1,4)]
+rd2m7s7 <- LV_RD_2WK_M_7_S7_salmon[,c(1,4)]
+rd2m8s8 <- LV_RD_2WK_M_8_S8_salmon[,c(1,4)]
+rd12f7s5 <- LV_RD_12WK_F_7_S5_salmon[,c(1,4)]
+rd12f8s6 <- LV_RD_12WK_F_8_S6_salmon[,c(1,4)]
+rd12f5s4 <- LV_RD_12WK_F5_S4_salmon[,c(1,4)]
+rd12m2s16 <- LV_RD_12WK_M_2_S16_salmon[,c(1,4)]
+rd12m3s1 <- LV_RD_12WK_M_3_S1_salmon[,c(1,4)]
+rd12m4s2 <- LV_RD_12WK_M_4_S2_salmon[,c(1,4)]
+```
+
+I filtrate the metadata to obtain the wat samples, and discard the file name columns:
+```{r}
+metadata <- Samples_code_HFD_MF_2_12wk[Samples_code_HFD_MF_2_12wk$Tissue == "LV",1:11]
+rownames(metadata) <- metadata$`Short code`
+```
+
+In order to get an association between the metadata table and the TPMs table, I name the TPMs column with the "Short code" name before joining the TPMs tables according to the gene's name column:
+```{r}
+colnames(h2f2s8)[2] <- 'L_02_F_H_2'
+colnames(h2f5s9)[2] <- 'L_02_F_H_5'
+colnames(h12f6s2)[2] <- 'L_12_F_H_6'
+colnames(h12m2s13)[2] <- 'L_12_M_H_2'
+colnames(h12m3s14)[2] <- 'L_12_M_H_3'
+colnames(h12m4s15)[2] <- 'L_12_M_H_4'
+colnames(h2f1s7)[2] <- 'L_02_F_H_1'
+colnames(h2m12s3)[2] <- 'L_02_M_H_12'
+colnames(h2m13s4)[2] <- 'L_02_M_H_13'
+colnames(h2m14s5)[2] <- 'L_02_M_H_14'
+colnames(h12f3s1)[2] <- 'L_12_F_H_3'
+colnames(h12f7s3)[2] <- 'L_12_F_H_7'
+colnames(rd2f1s10)[2] <- 'L_02_F_RD_1'
+colnames(rd2f2s11)[2] <- 'L_02_F_RD_2'
+colnames(rd2f4s12)[2] <- 'L_02_F_RD_4'
+colnames(rd2m6s6)[2] <- 'L_02_M_RD_6'
+colnames(rd2m7s7)[2] <- 'L_02_M_RD_7'
+colnames(rd2m8s8)[2] <- 'L_02_M_RD_8'
+colnames(rd12f7s5)[2] <-'L_12_F_RD_7'
+colnames(rd12f8s6)[2] <- 'L_12_F_RD_8'
+colnames(rd12f5s4)[2] <- 'L_12_F_RD_5'
+colnames(rd12m2s16)[2] <- 'L_12_M_RD_2'
+colnames(rd12m3s1)[2] <- 'L_12_M_RD_3'
+colnames(rd12m4s2)[2] <- 'L_12_M_RD_4'
+```
+
+At this point, I can join the different TMP tables by the "Name" column. This way, all the counts will be in the same row of the corresponding transcript.
+```{r}
+df1 <- left_join(h2f2s8,h2f5s9, by = "Name")
+df2 <- left_join(df1,h12f6s2, by = "Name")
+df3 <- left_join(df2,h12m2s13, by = "Name")
+df4 <- left_join(df3, h12m3s14, by = "Name")
+df5 <- left_join(df4, h12m4s15, by = "Name")
+df6 <- left_join(df5, h2f1s7, by = "Name")
+df7 <- left_join(df6, h2m12s3, by = "Name")
+df8 <- left_join(df7, h2m13s4, by = "Name")
+df9 <- left_join(df8, h2m14s5, by = "Name")
+df10 <- left_join(df9, h12f3s1, by = "Name")
+df11 <- left_join(df10, h12f7s3, by = "Name")
+df12 <- left_join(df11, rd2f1s10, by = "Name")
+df13 <- left_join(df12, rd2f2s11, by = "Name")
+df14 <- left_join(df13, rd2f4s12, by = "Name")
+df15 <- left_join(df14, rd2m6s6, by = "Name")
+df16 <- left_join(df15, rd2m7s7, by = "Name")
+df17 <- left_join(df16, rd2m8s8, by = "Name")
+df18 <- left_join(df17, rd12f7s5, by = "Name")
+df19 <- left_join(df18, rd12f8s6, by = "Name")
+df20 <- left_join(df19, rd12f5s4, by = "Name")
+df21 <- left_join(df20, rd12m2s16, by = "Name")
+df22 <- left_join(df21, rd12m3s1, by = "Name")
+df_tpm <- left_join(df22, rd12m4s2, by = "Name")
+rownames(df_tpm) <- df_tpm$Name
+rm(df1, df2, df3, df4, df5, df6, df7, df8, df9, df10, df11, df12, df13, df14, df15, df16, df17, df18, df19, df20, df21, df22)
+```
+
+# 4. Data exploration before batch correction
+
+Before I proceed to correct batch, I have explored data in boxplot and PCA.
+```{r}
+boxplot(df_tpm[,-1], which="all",las=2, main="Intensity distribution of RAW data", 
+        cex.axis=0.6, col=as.factor(metadata$Diet), names=metadata$`Short code`)
+
+#pcX<-prcomp(df_tpm[,-1]) # o prcomp(t(X))
+#loads<- round(pcX$sdev^2/sum(pcX$sdev^2)*100,1)
+#xlab<-c(paste("PC1",loads[1],"%"))
+#ylab<-c(paste("PC2",loads[2],"%"))
+#plot(pcX$rotation[,1:2],xlab=xlab,ylab=ylab, col=as.factor(metadata$Diet),
+#       xlim=c(min(pcX$rotation[,1])-100000, max(pcX$x[,1])+100000),ylim=c(min(pcX$x[,2])-100000, max(pcX$x[,2])+100000))
+#text(pcX$rotation[,1],pcX$rotation[,2], pos=3)
+#title(paste("Plot of first 2 PCs", sep=" "), cex=0.8)
+
+library("FactoMineR")
+library("factoextra")
+#pdf(file = "PCA mapping_factominer and factoextra_liver.pdf")
+res.pca <- PCA(df_tpm[,-1], scale.unit = FALSE, ncp = 10, graph = FALSE)
+fviz_eig(res.pca, addlabels = TRUE, ylim = c(0, 100),main = "All data") # The scree plot suggests PC-1 and PC-2 are the best options.
+
+fviz_pca_var(res.pca, axes = c(1, 2), geom = c("arrow", "text"),repel = FALSE,  
+             col.var = "black", fill.var = "white",alpha.var = 1, col.quanti.sup = "blue",
+             col.circle = "grey70",select.var = list(cos2 = 20))
+
+# Chow diet: despite the data is a bit disperse (despite ewat05 is not close to the rest, it's not clearly an outlier), I can observe clusters. 
+complete_df <- as.data.frame(res.pca$var$coord[,1:2])
+complete_df$`Short code` <- rownames(complete_df)
+complete_df <- left_join(complete_df, metadata, by = "Short code")
+rownames(complete_df) <- complete_df$`Short code`
+ggplot(complete_df, aes(Dim.1, Dim.2, color = Diet)) + geom_point() + theme_classic()+ geom_text_repel(aes(group = Time, label = paste(" ",rownames(complete_df))), hjust = "left", size = 3)+ ggtitle("PCA analysis\nBefore batch correction") + xlab("PC-1 (93.7%)") + ylab("PC-2 (4.1%)")+theme_classic()
+ggplot(complete_df, aes(Dim.1, Dim.2, color = Time)) + geom_point() + theme_classic()+ geom_text_repel(aes(group = Time, label = paste(" ",rownames(complete_df))), hjust = "left", size = 3)+ ggtitle("PCA analysis\nBefore batch correction") + xlab("PC-1 (93.7%)") + ylab("PC-2 (4.1%)")+theme_classic()
+ggplot(complete_df, aes(Dim.1, Dim.2, color = Sex)) + geom_point() + theme_classic()+ geom_text_repel(aes(group = Time, label = paste(" ",rownames(complete_df))), hjust = "left", size = 3)+ ggtitle("PCA analysis\nBefore batch correction") + xlab("PC-1 (93.7%)") + ylab("PC-2 (4.1%)")+theme_classic()
+#dev.off()
+```
+
+
+Another way to study the data distribution is MDS, similar to PCA, in "magrittr" and "ggpubr" packages: in this case the groups clearly cluster well associated to Diet. However, this calculation does not provide the percentage value.
+```{r}
+#mds_cd <- t(df_tpm[,-1]) %>%
+#  dist() %>% cmdscale() %>% as_tibble()
+#colnames(mds_cd) <- c("Dim.1", "Dim.2")
+#ggscatter(mds_cd, x = "Dim.1", y = "Dim.2", label = colnames(df_tpm[,-1]),
+#          size = 2, color = if_else(complete_df$Diet == "HFD",1,2),repel = TRUE)+ xlab("PC-1") + ylab("PC-2")+theme_classic()
+#ggscatter(mds_cd, x = "Dim.1", y = "Dim.2", label = colnames(df_tpm[,-1]),
+#          size = 2, color = if_else(complete_df$Time == "12WK",1,2),repel = TRUE)+ xlab("PC-1") + ylab("PC-2")+theme_classic()
+#ggscatter(mds_cd, x = "Dim.1", y = "Dim.2", label = colnames(df_tpm[,-1]),
+#          size = 2, color = if_else(complete_df$Sex == "F",1,2),repel = TRUE)+ xlab("PC-1") + ylab("PC-2")+theme_classic()
+```
+
+The distance matrix suggested it's convenient to run a batch correction.
+```{r}
+library("pheatmap")
+library("RColorBrewer")
+library("DESeq2")
+
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
+sampleDists <- dist(t((as.matrix(df_tpm[,-1]))))
+sampleDistMatrix <- as.matrix(sampleDists)
+pheatmap(sampleDistMatrix, col=colors)
+```
+
+# 5. Illumina threshold and batch correction 
+
+## 5.1 Illumina
+
+Mail from Jordi Altirriba to Marc the 12th of September, 2020, suggested filtrating counts:
+<< _(...)_
+_Respecte els threshold, el que diu Illumina és que un transcrit com a mínim ha de tenir 10 counts (no CPMs) per considerar-se present. Això en CPMs és entre 0.1 i 1 CPM, depenent del nombre de reads obtinguts._
+_No hi ha un criteri únic de filtratge, al igual que no ho havia en els microarrays. En els primer microarrays hi havia una doble seqüència per trànscrit, una que feia perfect match i l'altre amb un canvi de base (mismatch), a partir dels valors es podia calcular si el gen estava present o absent (Mol Metab del 2013). Els microarrays posteriors, per abaratir costos i tenint en compte que el RMA no utilitzava la seqüència MisMatch (MM) es varen eliminar i varem començar a utilitzar thresholds d'expressió._
+_En el RNASeq no hi ha un criteri únic i pot dependre del disseny experimental. No serà el mateix tenim 20 milions de reads que 60, ni treballar amb un cultiu cel·lular que amb single cells. Com a mínim, s'ha de fer un tall de 1 CPM (o FPKM). El fet de pujar el tall, farà que estiguis més segur de poder reproduir els resultats._
+_*Jo el que faig a les taules és analitzar totes les dades amb un tall de 10 counts (no CPMs) i faig la taula inicial del Excel (la de l'esquerra del tot a les Tabs) i després faig una selecció dels gens per FDR, FC i CPMs.*_
+_Així, sempre es pot anar a veure a la taula inicial els gens que volguessis consultar._
+_Hi han alguns estadístics que consideren que no s'hauria de fer tall per CPMs ni per Fold Change, si no únicament per FDR. Però tots sabem que si el gen s'expressa mooolt poc o el fold change és moooolt petit, costa mooooolt després en reproduir aquell resultat. Així, busquem resultats robustus que després ens el podem creure i poguem posteriorment construir sobre els resultats obtinguts. A vegades, aquests tipus de tècniques es consideren random machines number generators, ja que crea molts números i alguns són significatius per atzar (sempre tenim aquest 0.05 o 5% d'error). Així, augmentem la robustesa de les dades ficant altres thresholds._
+_Així, per exemple a Ginebra fan un threshold de 1 FPKM i un fold change de 2._
+_Altres exemples:_
+_Sterson 2015: per trobar els DEG, CPM>1, per filtrar les llistes , FDR<0.05, FC>2, CPM>20)_
+_*El EdgeR recomana fer un filtratge a 0.5CPM*_
+_Aquí parlen d'una RPKM d'entre 1 i 10: <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6096346/>_
+_Hi han algunes eines per determinar-ho._
+_Lo ideal seria saber si algún gen específic que estigui poc expressat està o no en el teu sistema._
+
+_Realment pots anar a una CPM o FPKM d'1 en canvi de pujar a 20._
+_(...)_>>
+
+Thus, we have agreed I will apply here a filtration of 10 reads and later, in the Excel table, I will explore other filtrations (to begin with: 1.5 FC, and _p-value_ < 0.05). I select the rows of numReads > 10 reads to keep the more highly expressed genes. With this filtration,, we have passed from a constant list of genes of 116357 genes, to a variable range of 50000 genes.
+
+```{r}
+h2f2s8 <- LV_HFD_2WK_F_2_S8_salmon[LV_HFD_2WK_F_2_S8_salmon$NumReads > 10,c(1,4)]
+h2f5s9 <- LV_HFD_2WK_F_5_S9_salmon[LV_HFD_2WK_F_5_S9_salmon$NumReads > 10,c(1,4)]
+h12f6s2 <- LV_HFD_12WK_F_6_S2_salmon[LV_HFD_12WK_F_6_S2_salmon$NumReads > 10,c(1,4)]
+h12m2s13 <- LV_HFD_12WK_M_2_S13_salmon[LV_HFD_12WK_M_2_S13_salmon$NumReads > 10,c(1,4)]
+h12m3s14 <- LV_HFD_12WK_M_3_S14_salmon[LV_HFD_12WK_M_3_S14_salmon$NumReads > 10,c(1,4)]
+h12m4s15 <- LV_HFD_12WK_M_4_S15_salmon[LV_HFD_12WK_M_4_S15_salmon$NumReads > 10,c(1,4)]
+h2f1s7 <- LV_HFD_2WK_F_1_S7_salmon[LV_HFD_2WK_F_1_S7_salmon$NumReads > 10,c(1,4)]
+h2m12s3 <- LV_HFD_2WK_M_12_S3_salmon[LV_HFD_2WK_M_12_S3_salmon$NumReads > 10,c(1,4)]
+h2m13s4 <- LV_HFD_2WK_M_13_S4_salmon[LV_HFD_2WK_M_13_S4_salmon$NumReads > 10,c(1,4)]
+h2m14s5 <- LV_HFD_2WK_M_14_S5_salmon[LV_HFD_2WK_M_14_S5_salmon$NumReads > 10,c(1,4)]
+h12f3s1 <- LV_HFD_12WK_F_3_S1_salmon[LV_HFD_12WK_F_3_S1_salmon$NumReads > 10,c(1,4)]
+h12f7s3 <- LV_HFD_12WK_F_7_S3_salmon[LV_HFD_12WK_F_7_S3_salmon$NumReads > 10,c(1,4)]
+rd2f1s10 <- LV_RD_2WK_F_1_S10_salmon[LV_RD_2WK_F_1_S10_salmon$NumReads > 10,c(1,4)]
+rd2f2s11 <- LV_RD_2WK_F_2_S11_salmon[LV_RD_2WK_F_2_S11_salmon$NumReads > 10,c(1,4)]
+rd2f4s12 <- LV_RD_2WK_F_4_S12_salmon[LV_RD_2WK_F_4_S12_salmon$NumReads > 10,c(1,4)]
+rd2m6s6 <- LV_RD_2WK_M_6_S6_salmon[LV_RD_2WK_M_6_S6_salmon$NumReads > 10,c(1,4)]
+rd2m7s7 <- LV_RD_2WK_M_7_S7_salmon[LV_RD_2WK_M_7_S7_salmon$NumReads > 10,c(1,4)]
+rd2m8s8 <- LV_RD_2WK_M_8_S8_salmon[LV_RD_2WK_M_8_S8_salmon$NumReads > 10,c(1,4)]
+rd12f7s5 <- LV_RD_12WK_F_7_S5_salmon[LV_RD_12WK_F_7_S5_salmon$NumReads > 10,c(1,4)]
+rd12f8s6 <- LV_RD_12WK_F_8_S6_salmon[LV_RD_12WK_F_8_S6_salmon$NumReads > 10,c(1,4)]
+rd12f5s4 <- LV_RD_12WK_F5_S4_salmon[LV_RD_12WK_F5_S4_salmon$NumReads > 10,c(1,4)]
+rd12m2s16 <- LV_RD_12WK_M_2_S16_salmon[LV_RD_12WK_M_2_S16_salmon$NumReads > 10,c(1,4)]
+rd12m3s1 <- LV_RD_12WK_M_3_S1_salmon[LV_RD_12WK_M_3_S1_salmon$NumReads > 10,c(1,4)]
+rd12m4s2 <- LV_RD_12WK_M_4_S2_salmon[LV_RD_12WK_M_4_S2_salmon$NumReads > 10,c(1,4)]
+```
+
+I filtrate the metadata to obtain the wat samples, and discard the file name columns:
+```{r}
+metadata <- Samples_code_HFD_MF_2_12wk[Samples_code_HFD_MF_2_12wk$Tissue == "LV",1:11]
+rownames(metadata) <- metadata$`Short code`
+```
+
+In order to get an association between the metadata table and the TPMs table, I name the TPMs column with the "Short code" name before joining the TPMs tables according to the gene's name column:
+```{r}
+colnames(h2f2s8)[2] <- 'L_02_F_H_2'
+colnames(h2f5s9)[2] <- 'L_02_F_H_5'
+colnames(h12f6s2)[2] <- 'L_12_F_H_6'
+colnames(h12m2s13)[2] <- 'L_12_M_H_2'
+colnames(h12m3s14)[2] <- 'L_12_M_H_3'
+colnames(h12m4s15)[2] <- 'L_12_M_H_4'
+colnames(h2f1s7)[2] <- 'L_02_F_H_1'
+colnames(h2m12s3)[2] <- 'L_02_M_H_12'
+colnames(h2m13s4)[2] <- 'L_02_M_H_13'
+colnames(h2m14s5)[2] <- 'L_02_M_H_14'
+colnames(h12f3s1)[2] <- 'L_12_F_H_3'
+colnames(h12f7s3)[2] <- 'L_12_F_H_7'
+colnames(rd2f1s10)[2] <- 'L_02_F_RD_1'
+colnames(rd2f2s11)[2] <- 'L_02_F_RD_2'
+colnames(rd2f4s12)[2] <- 'L_02_F_RD_4'
+colnames(rd2m6s6)[2] <- 'L_02_M_RD_6'
+colnames(rd2m7s7)[2] <- 'L_02_M_RD_7'
+colnames(rd2m8s8)[2] <- 'L_02_M_RD_8'
+colnames(rd12f7s5)[2] <-'L_12_F_RD_7'
+colnames(rd12f8s6)[2] <- 'L_12_F_RD_8'
+colnames(rd12f5s4)[2] <- 'L_12_F_RD_5'
+colnames(rd12m2s16)[2] <- 'L_12_M_RD_2'
+colnames(rd12m3s1)[2] <- 'L_12_M_RD_3'
+colnames(rd12m4s2)[2] <- 'L_12_M_RD_4'
+```
+
+At this point, I can join the different TMP tables by the "Name" column. This way, all the counts will be in the same row of the corresponding transcript.
+```{r}
+df1 <- left_join(h2f2s8,h2f5s9, by = "Name")
+df2 <- left_join(df1,h12f6s2, by = "Name")
+df3 <- left_join(df2,h12m2s13, by = "Name")
+df4 <- left_join(df3, h12m3s14, by = "Name")
+df5 <- left_join(df4, h12m4s15, by = "Name")
+df6 <- left_join(df5, h2f1s7, by = "Name")
+df7 <- left_join(df6, h2m12s3, by = "Name")
+df8 <- left_join(df7, h2m13s4, by = "Name")
+df9 <- left_join(df8, h2m14s5, by = "Name")
+df10 <- left_join(df9, h12f3s1, by = "Name")
+df11 <- left_join(df10, h12f7s3, by = "Name")
+df12 <- left_join(df11, rd2f1s10, by = "Name")
+df13 <- left_join(df12, rd2f2s11, by = "Name")
+df14 <- left_join(df13, rd2f4s12, by = "Name")
+df15 <- left_join(df14, rd2m6s6, by = "Name")
+df16 <- left_join(df15, rd2m7s7, by = "Name")
+df17 <- left_join(df16, rd2m8s8, by = "Name")
+df18 <- left_join(df17, rd12f7s5, by = "Name")
+df19 <- left_join(df18, rd12f8s6, by = "Name")
+df20 <- left_join(df19, rd12f5s4, by = "Name")
+df21 <- left_join(df20, rd12m2s16, by = "Name")
+df22 <- left_join(df21, rd12m3s1, by = "Name")
+df_tpm <- left_join(df22, rd12m4s2, by = "Name")
+rownames(df_tpm) <- df_tpm$Name
+rm(df1, df2, df3, df4, df5, df6, df7, df8, df9, df10, df11, df12, df13, df14, df15, df16, df17, df18, df19, df20, df21, df22)
+```
+
+The final working table has some ```NA``` values. Thus, I need to remove them: the working table has now about 32000 genes.
+```{r}
+df_tpm$SUMA <- apply(df_tpm[,-1],1, mean)
+df_tpm <- df_tpm[-which(is.na(df_tpm$SUMA)==TRUE),]
+df_tpm <- df_tpm[,-ncol(df_tpm)]
+dim(df_tpm) #  12434    25
+```
+
+## 5.2 Gene name conversion and Batch correction
+
+Due to the transcripts were in the ENSEMBL nomenclature, I convert it:
+```{r}
+#library("AnnotationDbi")
+#library(DOSE)
+#library(GO.db)
+#library(TxDb.Mmusculus.UCSC.mm10.ensGene)
+#library(org.Mm.eg.db)
+#biocLite('topGO')
+#install.packages("topGO")
+#library(topGO)
+#biocLite('GSEABase')
+#library(GSEABase)
+#library(clusterProfiler)
+#columns(org.Mm.eg.db)
+#keytypes(TxDb.Mmusculus.UCSC.mm10.ensGene)
+#[1] "ACCNUM"       "ALIAS"        "ENSEMBL"      "ENSEMBLPROT"  "ENSEMBLTRANS" "ENTREZID"     "ENZYME"      
+# [8] "EVIDENCE"     "EVIDENCEALL"  "GENENAME"     "GO"           "GOALL"        "IPI"          "MGI"         
+#[15] "ONTOLOGY"     "ONTOLOGYALL"  "PATH"         "PFAM"         "PMID"         "PROSITE"      "REFSEQ"      
+#[22] "SYMBOL"       "UNIGENE"      "UNIPROT"     
+#keys(org.Mm.eg.db, keytype="ENSEMBLTRANS")[1:10]
+#org.Mm.eg.db@.xData$.self@.xData
+#require(annotate)
+#txid <- select(TxDb.Mmusculus.UCSC.mm10.ensGene, rownames(mat), "TXNAME", "GENEID")[["TXNAME"]]
+#Biomart_mmus_Genes_Transcripts_Ensembl <- read_csv("I:/IDIBAPS/Gene_Ontology_annotations/Biomart_mmus_Genes_Transcripts_Ensembl.csv")
+Biomart_mmus_Genes_Transcripts_Ensembl <- read_excel("/Volumes/ELENA_3/IDIBAPS/Gene_Ontology_annotations/Biomart_mmus_Genes_Transcripts_Ensembl.xlsx")
+```
+
+I calculate the correction of batch effect (limma R package):
+```{r}
+rownames(df_tpm) <- df_tpm$Name
+mat <- limma::removeBatchEffect(df_tpm[,-1], metadata$Batch)
+rownames(mat) <- df_tpm$Name
+kable(df_tpm[1:4,1:4], caption = "Section of the TPM table: before batch correction")
+kable(mat[1:4,1:4], caption = "Section of the TPM table: after batch correction")
+write.table(mat, "Normalized_reads_as_TPMs_and_Jordi_Liver.txt", sep = "\t", dec = ".", row.names = T)
+mat <- as.data.frame(mat)
+```
+
+Now I can finish the name conversion and squiz the table according to the gene symbol (I agree with Vicent we would work by now with symbols and we would come back to this point if we would like to review any of the genes):
+```{r}
+#Names <- bitr(rownames(mat), fromType="TXNAME", toType="GENEID", OrgDb="TxDb.Mmusculus.UCSC.mm10.ensGene")
+#mat$Names <- bitr(rownames(mat), fromType="TXNAME", toType=c("TXID", "GENEID"), OrgDb="TxDb.Mmusculus.UCSC.mm10.ensGene")
+mat$`Transcript stable ID version` <- rownames(mat)
+mat <- left_join(Biomart_mmus_Genes_Transcripts_Ensembl, mat, by = 'Transcript stable ID version')
+mat <- mat[-which(is.na(mat$L_12_F_H_3)==TRUE),]
+mat <- mat[-which(is.na(mat$`Gene name`)==TRUE),]
+dim(mat) # 32725    29
+head((mat[1:4,1:4]))
+
+mat2 <- aggregate(mat[,-c(1:5)], list(mat$`Gene name`), mean)
+write.table(mat2, "Normalized_reads_as_TPMs_and_Jordi_symbols_Liver.txt", sep = "\t", dec = ".", row.names = F)
+```
+
+Data exploration after batch correction:
+
+ + Boxplot and PCA.
+```{r}
+boxplot(mat2[,-1], which="all",las=2, main="Intensity distribution of RAW data", 
+        cex.axis=0.6, col=as.factor(metadata$Diet), names=metadata$`Short code`)
+
+library("FactoMineR")
+library("factoextra")
+#pdf(file = "PCA_factominer_factoextra_after_correcting_batch_effect_Liver.pdf")
+res.pca <- PCA(mat2[,-1], scale.unit = FALSE, ncp = 10, graph = FALSE)
+fviz_eig(res.pca, addlabels = TRUE, ylim = c(0, 100),main = "All data") # The scree plot suggests PC-1 and PC-2 are the best options.
+
+fviz_pca_var(res.pca, axes = c(1, 2), geom = c("arrow", "text"),repel = FALSE,  
+             col.var = "black", fill.var = "white",alpha.var = 1, col.quanti.sup = "blue",
+             col.circle = "grey70",select.var = list(cos2 = 20))
+
+# Chow diet: despite the data is a bit disperse (despite ewat05 is not close to the rest, it's not clearly an outlier), I can observe clusters. 
+complete_df <- as.data.frame(res.pca$var$coord[,1:2])
+complete_df$`Short code` <- rownames(complete_df)
+complete_df <- left_join(complete_df, metadata, by = "Short code")
+rownames(complete_df) <- complete_df$`Short code`
+ggplot(complete_df, aes(Dim.1, Dim.2, color = Diet)) + geom_point() + theme_classic()+ geom_text_repel(aes(group = Time, label = paste(" ",rownames(complete_df))), hjust = "left", size = 3)+ ggtitle("PCA analysis\nAfter batch correction") + xlab("PC-1 (93.7%)") + ylab("PC-2 (4.1%)")+theme_classic()
+ggplot(complete_df, aes(Dim.1, Dim.2, color = Time)) + geom_point() + theme_classic()+ geom_text_repel(aes(group = Time, label = paste(" ",rownames(complete_df))), hjust = "left", size = 3)+ ggtitle("PCA analysis\nAfter batch correction") + xlab("PC-1 (93.7%)") + ylab("PC-2 (4.1%)")+theme_classic()
+ggplot(complete_df, aes(Dim.1, Dim.2, color = Sex)) + geom_point() + theme_classic()+ geom_text_repel(aes(group = Time, label = paste(" ",rownames(complete_df))), hjust = "left", size = 3)+ ggtitle("PCA analysis\nAfter batch correction") + xlab("PC-1 (93.7%)") + ylab("PC-2 (4.1%)")+theme_classic()
+#dev.off()
+```
+
+Another way to study the data distribution is MDS, similar to PCA, in "magrittr" and "ggpubr" packages: in this case the groups clearly cluster well associated to Diet. However, this calculation does not provide the percentage value.
+```{r}
+#mds_cd <- t(mat2[,-1]) %>%
+#  dist() %>% cmdscale() %>% as_tibble()
+#colnames(mds_cd) <- c("Dim.1", "Dim.2")
+#ggscatter(mds_cd, x = "Dim.1", y = "Dim.2", label = colnames(mat2[,-1]),
+#          size = 2, color = if_else(complete_df$Diet == "HFD",1,2),repel = TRUE)+ xlab("PC-1") + ylab("PC-2")+theme_classic()
+#ggscatter(mds_cd, x = "Dim.1", y = "Dim.2", label = colnames(mat2[,-1]),
+#          size = 2, color = if_else(complete_df$Time == "12WK",1,2),repel = TRUE)+ xlab("PC-1") + ylab("PC-2")+theme_classic()
+#ggscatter(mds_cd, x = "Dim.1", y = "Dim.2", label = colnames(mat2[,-1]),
+#          size = 2, color = if_else(complete_df$Sex == "F",1,2),repel = TRUE)+ xlab("PC-1") + ylab("PC-2")+theme_classic()
+```
+
+The distance matrix suggested it's convenient to filtrate genes according to biological criteria.
+```{r}
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
+sampleDists <- dist(t((as.matrix(mat2[,-1]))))
+sampleDistMatrix <- as.matrix(sampleDists)
+pheatmap(sampleDistMatrix, col=colors)
+```
+

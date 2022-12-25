@@ -1,0 +1,163 @@
+---
+title: "Primary statistics"
+author: "Elena Eyre, PhD"
+date: '2022-12-01'
+output:
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+urlcolor: tomato
+linkcolor: steelblue2
+fontsize: 8 pt
+---
+
+# 1. Load libraries of functions and data: 
+
+I uploaded data and packages of necessary functions to perform the calculations.
+
+```{r, setup, results=FALSE, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE)
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("DESeq2")
+package_to_load <- c("readxl", "dplyr", "ggplot2", "tidyr", "broom", "gplots", "tidyverse")
+for (package in package_to_load) {
+  require(package, character.only = T); packageVersion(package)
+}
+extra_to_load <- c("knitr","kableExtra", "stringr", "stringi", "ggrepel","ggpubr", "ggbreak","RColorBrewer","corrplot","edgeR","purrr","pheatmap")
+for (package in extra_to_load) {
+  require(package, character.only = T); packageVersion(package)
+}
+```
+
+# 2. Load data and extract values to a new table
+
+Load the statistics I developed in an external Excel table:
+
+```{r}
+RNAseq_WAT_salmon <- read_excel("/Volumes/ELENA_3/IDIBAPS/Vicens_RNAseq/RNAseq_WAT_salmon.xlsx", 
+    sheet = "Statistics")
+```
+
+I also load the metadata table and keep WAT tissue:
+
+```{r}
+metadata <- read_excel("/Volumes/ELENA_3/IDIBAPS/Vicens_RNAseq/Samples_code_HFD_MF_2_12wk.xlsx")
+metadata <- metadata[metadata$Tissue != "LV",]
+```
+
+# 3. Pre-process the table
+
+```{r}
+df <- RNAseq_WAT_salmon[,2:25]
+rownames(df) <- RNAseq_WAT_salmon$Probes...1
+colnames(df) <- mat2[,-2]
+```
+
+Matrices design:
+
+ + Diet matrix: 
+ 
+```{r linearModel}
+library(limma)
+group_a <- metadata$Diet
+lev_a <- factor(group_a, levels = unique(group_a))
+design_a <-model.matrix(~0+lev_a)
+colnames(design_a) <- levels(lev_a)
+rownames(design_a) <- metadata$`Short code`
+print(design_a)
+```
+
++ Time matrix:
+
+```{r}
+group_b <- metadata$Time
+lev_b <- factor(group_b, levels = unique(group_b))
+design_b <-model.matrix(~0+lev_b)
+colnames(design_b) <- levels(lev_b) # Due to "12WK" "2WK" are not going to be accepted, I'll modify them
+colnames(design_b) <- paste0("T_", colnames(design_b))
+rownames(design_b) <- metadata$`Short code`
+print(design_b)
+```
+
++ Gender matrix:
+
+```{r}
+group_c <- metadata$Sex
+lev_c <- factor(group_c, levels = unique(group_c))
+design_c <-model.matrix(~0+lev_c)
+colnames(design_c) <- levels(lev_c) # Due to "F" is not going to be accepted, I'll modify them
+colnames(design_c) <- paste0("S_", colnames(design_c))
+rownames(design_c) <- metadata$`Short code`
+print(design_c)
+```
+
+Contrast matrices:
+
+```{r}
+cont_matr_a <- makeContrasts(Diet = HFD - RD, levels = design_a)
+cont_matr_b <- makeContrasts(Time = T_12WK - T_2WK , levels = design_b)
+cont_matr_c <- makeContrasts(Gender = S_F - S_M, levels = design_c)
+cont_matr <- makeContrasts(Gender = S_F - S_M,
+                           Diet = HFD - RD,
+                           Time = T_12WK - T_2WK , levels = design)
+comparisonName_a <- "Diet"
+comparisonName_b <- "Time"
+comparisonName_c <- "Gender"
+print(cont_matr_a)
+print(cont_matr_b)
+print(cont_matr_c)
+```
+
+Models to obtain the fold change and the FDR:
+
+```{r estimaModelo}
+fit1 <- lmFit(df, design_a)
+fit.main1 <- contrasts.fit(fit1, cont_matr_a)
+fit.main1 <- eBayes(fit.main1)
+topTab_diet <-  topTable(fit.main1, number=nrow(fit.main1), coef="Diet", adjust="fdr",#lfc=3, p.value=0.05
+                    )
+head(topTab_diet)
+write.table(topTab_diet, "Statistics_Diet_limma.txt", sep = "\t", dec = ".", row.names = T)
+```
+
++ Diet: 
+
+```{r estimaModelo}
+fit1 <- lmFit(df, design_a)
+fit.main1 <- contrasts.fit(fit1, cont_matr_a)
+fit.main1 <- eBayes(fit.main1)
+topTab_diet <-  topTable(fit.main1, number=nrow(fit.main1), coef="Diet", adjust="fdr",#lfc=3, p.value=0.05
+                    )
+head(topTab_diet)
+write.table(topTab_diet, "Statistics_Diet_limma.txt", sep = "\t", dec = ".", row.names = T)
+```
+
++ Time: 
+
+```{r estimaModelo}
+fit1 <- lmFit(df, design_b)
+fit.main1 <- contrasts.fit(fit1, cont_matr_b)
+fit.main1 <- eBayes(fit.main1)
+topTab_time <-  topTable(fit.main1, number=nrow(fit.main1), coef="Time", adjust="fdr",#lfc=3, p.value=0.05
+                    )
+head(topTab_time)
+write.table(topTab_time, "Statistics_Time_limma.txt", sep = "\t", dec = ".", row.names = T)
+```
+
++ Gender: 
+
+```{r estimaModelo}
+fit1 <- lmFit(df, design_c)
+fit.main1 <- contrasts.fit(fit1, cont_matr_c)
+fit.main1 <- eBayes(fit.main1)
+topTab_gender <-  topTable(fit.main1, number=nrow(fit.main1), coef="Gender", adjust="fdr",#lfc=3, p.value=0.05
+                    )
+head(topTab_gender)
+write.table(topTab_gender, "Statistics_Gender_limma.txt", sep = "\t", dec = ".", row.names = T)
+```
